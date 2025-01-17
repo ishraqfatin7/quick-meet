@@ -1,21 +1,20 @@
-import { ConflictException, ForbiddenException, HttpStatus, Inject, Injectable, NotFoundException, Logger } from '@nestjs/common';
-import { admin_directory_v1, calendar_v3, google, people_v1 } from 'googleapis';
-import { IGoogleApiService } from './interfaces/google-api.interface';
-import { OAuthTokenResponse } from '../auth/dto';
-import { OAuth2Client } from 'google-auth-library';
-import appConfig from 'src/config/env/app.config';
+import { ConflictException, ForbiddenException, HttpStatus, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import to from 'await-to-js';
 import { GaxiosError, GaxiosResponse } from 'gaxios';
+import { OAuth2Client } from 'google-auth-library';
+import { admin_directory_v1, calendar_v3, google, people_v1 } from 'googleapis';
+import appConfig from 'src/config/env/app.config';
 import { GoogleAPIErrorMapper } from 'src/helpers/google-api-error.mapper';
+import { OAuthTokenResponse } from '../auth/dto';
+import { IGoogleApiService } from './interfaces/google-api.interface';
 
 @Injectable()
 export class GoogleApiService implements IGoogleApiService {
   constructor(
     @Inject(appConfig.KEY) private config: ConfigType<typeof appConfig>,
     private logger: Logger,
-  ) {}
-
+  ) { }
   getOAuthClient(): OAuth2Client {
     return new google.auth.OAuth2(this.config.oAuthClientId, this.config.oAuthClientSecret, this.config.oAuthRedirectUrl);
   }
@@ -23,10 +22,13 @@ export class GoogleApiService implements IGoogleApiService {
   getOAuthUrl(client: 'web' | 'chrome') {
     const scopes = [
       'https://www.googleapis.com/auth/admin.directory.resource.calendar.readonly',
+      'https://apps-apis.google.com/a/feeds/groups/',
       'https://www.googleapis.com/auth/calendar',
       'https://www.googleapis.com/auth/userinfo.email',
       'https://www.googleapis.com/auth/userinfo.profile',
       'https://www.googleapis.com/auth/directory.readonly',
+      'https://www.googleapis.com/auth/admin.directory.group.readonly',
+      'https://www.googleapis.com/auth/admin.directory.group.member.readonly',
     ];
 
     const oAuthClient = this.getOAuthClient();
@@ -205,6 +207,7 @@ export class GoogleApiService implements IGoogleApiService {
       calendar.events.delete({
         calendarId: 'primary',
         eventId: id,
+
         sendUpdates: 'all',
         sendNotifications: true,
       }),
@@ -215,6 +218,25 @@ export class GoogleApiService implements IGoogleApiService {
     }
   }
 
+  //https://admin.googleapis.com/admin/directory/v1/groups/{groupKey}/members
+  async searchGroups(oauth2Client: OAuth2Client, groupKey: string): Promise<admin_directory_v1.Schema$Members> {
+    const service = google.admin({ version: 'directory_v1', auth: oauth2Client });
+    const options = { groupKey };
+    console.log('Calling service.members.list with options:', options);
+    const [err, res]: [GaxiosError, GaxiosResponse<admin_directory_v1.Schema$Members>] = await to(service.members.list(options));
+    if (err) {
+      console.error('Error calling service.members.list:', err);
+      GoogleAPIErrorMapper.handleError(err);
+      return { members: [] };
+    }
+
+    if (!res || !res.data) {
+      console.error('No response data received from service.members.list');
+      return { members: [] };
+    }
+    console.log('Search Groups Response:', res.data);
+    return res.data || { members: [] };
+  }
   // https://developers.google.com/people/api/rest/v1/people/searchDirectoryPeople
   async searchPeople(oauth2Client: OAuth2Client, query: string): Promise<people_v1.Schema$Person[]> {
     const peopleService = google.people({ version: 'v1', auth: oauth2Client });
@@ -227,6 +249,7 @@ export class GoogleApiService implements IGoogleApiService {
         sources: ['DIRECTORY_SOURCE_TYPE_DOMAIN_PROFILE'],
       }),
     );
+    console.log('Search People Response:', res.data);
 
     if (err) {
       this.logger.error("Couldn't search directory people: ", err);

@@ -1,17 +1,17 @@
-import { OAuth2Client } from 'google-auth-library';
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { calendar_v3 } from 'googleapis';
-import { extractRoomByEmail, isRoomAvailable, validateEmail } from './util/calender.util';
-import { AuthService } from '../auth/auth.service';
 import { DeleteResponse, EventResponse, EventUpdateResponse, IConferenceRoom } from '@quickmeet/shared';
+import { OAuth2Client } from 'google-auth-library';
+import { calendar_v3 } from 'googleapis';
 import { GoogleApiService } from 'src/google-api/google-api.service';
+import { AuthService } from '../auth/auth.service';
+import { extractRoomByEmail, isRoomAvailable, validateEmail } from './util/calender.util';
 
 @Injectable()
 export class CalenderService {
   constructor(
     private authService: AuthService,
     @Inject('GoogleApiService') private readonly googleApiService: GoogleApiService,
-  ) {}
+  ) { }
 
   async createEvent(
     client: OAuth2Client,
@@ -192,7 +192,7 @@ export class CalenderService {
     const calenders = await this.googleApiService.getCalenderSchedule(client, start, end, timeZone, [roomEmail]);
 
     const availableRooms: IConferenceRoom[] = [];
-    let room: IConferenceRoom = null;
+    const room: IConferenceRoom = null;
 
     for (const roomEmail of Object.keys(calenders)) {
       const isAvailable = isRoomAvailable(calenders[roomEmail].busy, new Date(start), new Date(end));
@@ -217,7 +217,7 @@ export class CalenderService {
     for (const event of events) {
       let room: IConferenceRoom | null = null;
 
-      let attendees: string[] = [];
+      const attendees: string[] = [];
       if (event.attendees) {
         for (const attendee of event.attendees) {
           if (!attendee.resource && attendee.responseStatus !== 'declined' && !attendee.organizer) {
@@ -419,6 +419,9 @@ export class CalenderService {
 
   async searchPeople(client: OAuth2Client, emailQuery: string): Promise<string[]> {
     const people = await this.googleApiService.searchPeople(client, emailQuery);
+    console.log('Calling searchGroups with groupKey:', emailQuery); // Added log
+    const groups = await this.googleApiService.searchGroups(client, emailQuery);
+    console.log(groups);
     const emails = [];
     for (const p of people) {
       for (const email of p.emailAddresses) {
@@ -428,6 +431,14 @@ export class CalenderService {
         }
       }
     }
+
+    // if (groups.members && groups.members.length > 0) {
+    //   const emails = [];
+    //   for (const member of groups.members) {
+    //     emails.push(member.email);
+    //   }
+    //   return emails;
+    // }
 
     return emails;
   }
