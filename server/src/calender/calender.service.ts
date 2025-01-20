@@ -1,6 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { DeleteResponse, EventResponse, EventUpdateResponse, IConferenceRoom } from '@quickmeet/shared';
-import { OAuth2Client } from 'google-auth-library';
+import { DeleteResponse, EventResponse, EventUpdateResponse, IConferenceRoom, IPeopleInformation } from '@quickmeet/shared';
 import { calendar_v3 } from 'googleapis';
 import { GoogleApiService } from 'src/google-api/google-api.service';
 import { AuthService } from '../auth/auth.service';
@@ -417,29 +416,19 @@ export class CalenderService {
     return floors;
   }
 
-  async searchPeople(client: OAuth2Client, emailQuery: string): Promise<string[]> {
-    const people = await this.googleApiService.searchPeople(client, emailQuery);
-    console.log('Calling searchGroups with groupKey:', emailQuery); // Added log
-    const groups = await this.googleApiService.searchGroups(client, emailQuery);
-    console.log(groups);
-    const emails = [];
-    for (const p of people) {
-      for (const email of p.emailAddresses) {
-        if (email.metadata.primary && email.metadata.verified) {
-          emails.push(email.value);
-          break;
-        }
-      }
-    }
+  async searchPeople(client: OAuth2Client, emailQuery: string): Promise<IPeopleInformation[]> {
+    const response = await this.googleApiService.searchPeople(client, emailQuery);
+    const peoples: IPeopleInformation[] = response.map((people) => {
+      const email = people.emailAddresses.find((email) => email.metadata.primary && email.metadata.verified);
+      const photo = people.photos?.find((photo) => photo.metadata.primary);
+      const name = people.names?.find((name) => name.metadata.primary);
+      return {
+        email: email?.value,
+        name: name?.displayName,
+        photo: photo?.url,
+      };
+    });
 
-    // if (groups.members && groups.members.length > 0) {
-    //   const emails = [];
-    //   for (const member of groups.members) {
-    //     emails.push(member.email);
-    //   }
-    //   return emails;
-    // }
-
-    return emails;
+    return peoples;
   }
 }
